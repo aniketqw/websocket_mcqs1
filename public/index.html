@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCQ Game</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+    #question { font-size: 1.5em; margin-bottom: 10px; }
+    .option { display: block; margin: 10px; cursor: pointer; }
+    #result, #scores { margin-top: 20px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>MCQ Game</h1>
+  <div id="user-info"></div>
+  <div id="question"></div>
+  <div id="options"></div>
+  <div id="result"></div>
+  <div id="scores"></div>
+
+  <script>
+    const PORT = 8080; // Replace with your port if different
+    const socket = new WebSocket(`ws://localhost:${PORT}`);
+    let userName;
+
+    socket.onopen = () => {
+      console.log("Connected to the WebSocket server");
+    };
+
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+
+      if (message.type === 'user') {
+        userName = message.data;
+        document.getElementById('user-info').textContent = userName;
+      }
+
+      if (message.type === 'mcq') {
+        const mcq = message.data;
+        document.getElementById('question').textContent = mcq.question;
+        const optionsDiv = document.getElementById('options');
+        optionsDiv.innerHTML = '';
+        mcq.options.forEach((option, index) => {
+          const optionButton = document.createElement('button');
+          optionButton.textContent = option;
+          optionButton.className = 'option';
+          optionButton.onclick = () => {
+            socket.send(JSON.stringify({ type: 'answer', answer: index }));
+          };
+          optionsDiv.appendChild(optionButton);
+        });
+      }
+
+      if (message.type === 'result') {
+        document.getElementById('result').textContent = message.data;
+      }
+
+      if (message.type === 'scores') {
+        const scores = message.data;
+        const scoresDiv = document.getElementById('scores');
+        scoresDiv.innerHTML = '<h3>Scores:</h3>';
+        scores.forEach(score => {
+          const scoreElement = document.createElement('div');
+          scoreElement.textContent = `${score.user}: ${score.score}`;
+          scoresDiv.appendChild(scoreElement);
+        });
+      }
+    };
+
+    socket.onclose = () => {
+      document.getElementById('result').textContent = 'Disconnected from the WebSocket server';
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  </script>
+</body>
+</html>

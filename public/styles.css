@@ -1,0 +1,80 @@
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: "Apercu",-apple-system,BlinkMacSystemFont,"Segoe UI","Roboto","Ubuntu","Cantarell","Fira Sans","Droid Sans","Helvetica Neue",sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0% 10%;
+}
+
+.chat {
+  flex: 1 0 auto;
+  width: 100%;
+  border: solid 1px #EEE;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  overflow-y: scroll;
+  max-height: calc(100% - 150px);
+}
+
+form {
+  flex-shrink: 0;
+  display: flex;
+  width: 100%;
+}
+#messageBox { 
+  flex-grow: 1; 
+  padding: 10px; 
+  margin: 10px; 
+  border-radius: 5px;
+  border-style: solid;
+}
+#send { 
+  margin: 10px 0px;
+  background: #0085D1;
+  color: white;
+  border-radius: 5px;
+  border-style: none;
+  padding: 10px;
+}
+
+
+
+.messages {
+  display: flex;
+  flex-direction: column;
+}
+
+.message {
+  border-radius: 20px;
+  padding: 8px 15px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  display: inline-block;
+}
+
+.receiving {
+  align-items: flex-start;
+}
+
+.receiving .message {
+  margin-right: 25%;
+  background-color: #eee;
+  position: relative;
+}
+
+.sending {
+  align-items: flex-end;
+}
+
+.sending .message {
+  color: white;
+  margin-left: 25%;
+  background: linear-gradient(to bottom, #00D0EA 0%, #0085D1 100%);
+  background-attachment: fixed;
+  position: relative;
+}
