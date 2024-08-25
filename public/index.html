@@ -3,78 +3,135 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCQ Game</title>
+  <title>MCQ Battle</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-    #question { font-size: 1.5em; margin-bottom: 10px; }
-    .option { display: block; margin: 10px; cursor: pointer; }
-    #result, #scores { margin-top: 20px; font-weight: bold; }
+    body { font-family: Arial, sans-serif; }
+    #mcqForm, #mcqList { margin: 20px; }
+    #mcqForm input { margin: 5px 0; display: block; }
+    #mcqList ul { list-style: none; padding: 0; }
   </style>
 </head>
 <body>
-  <h1>MCQ Game</h1>
-  <div id="user-info"></div>
-  <div id="question"></div>
-  <div id="options"></div>
-  <div id="result"></div>
-  <div id="scores"></div>
+
+  <h1>MCQ Battle</h1>
+
+  <div id="home">
+    <h2>Create MCQ</h2>
+    <form id="mcqForm">
+      <input type="text" id="question" placeholder="Question" required>
+      <input type="text" id="option1" placeholder="Option 1" required>
+      <input type="text" id="option2" placeholder="Option 2" required>
+      <input type="text" id="option3" placeholder="Option 3" required>
+      <input type="text" id="option4" placeholder="Option 4" required>
+      <input type="number" id="correctOption" placeholder="Correct Option (0-3)" required>
+      <button type="submit">Add MCQ</button>
+    </form>
+
+    <h2>MCQ List</h2>
+    <div id="mcqList"></div>
+    
+    <button id="joinGame">Join Game</button>
+  </div>
+
+  <div id="game" style="display: none;">
+    <h2>Current MCQ</h2>
+    <div id="mcqDisplay"></div>
+    <form id="answerForm" style="display: none;">
+      <input type="number" id="answer" placeholder="Your Answer (0-3)" required>
+      <button type="submit">Submit Answer</button>
+    </form>
+    <div id="result"></div>
+  </div>
 
   <script>
-    const PORT = 8080; // Replace with your port if different
-    const socket = new WebSocket(`ws://localhost:${PORT}`);
-    let userName;
+    const homeDiv = document.getElementById('home');
+    const gameDiv = document.getElementById('game');
+    const mcqForm = document.getElementById('mcqForm');
+    const mcqListDiv = document.getElementById('mcqList');
+    const answerForm = document.getElementById('answerForm');
+    const mcqDisplay = document.getElementById('mcqDisplay');
+    const resultDiv = document.getElementById('result');
+    
+    const joinGameButton = document.getElementById('joinGame');
 
-    socket.onopen = () => {
-      console.log("Connected to the WebSocket server");
-    };
+    let wsClient;
 
-    socket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-
-      if (message.type === 'user') {
-        userName = message.data;
-        document.getElementById('user-info').textContent = userName;
-      }
-
-      if (message.type === 'mcq') {
-        const mcq = message.data;
-        document.getElementById('question').textContent = mcq.question;
-        const optionsDiv = document.getElementById('options');
-        optionsDiv.innerHTML = '';
-        mcq.options.forEach((option, index) => {
-          const optionButton = document.createElement('button');
-          optionButton.textContent = option;
-          optionButton.className = 'option';
-          optionButton.onclick = () => {
-            socket.send(JSON.stringify({ type: 'answer', answer: index }));
-          };
-          optionsDiv.appendChild(optionButton);
+    function loadMCQs() {
+      fetch('/api/mcqs')
+        .then(res => res.json())
+        .then(data => {
+          mcqListDiv.innerHTML = '';
+          data.forEach(mcq => {
+            const mcqItem = document.createElement('div');
+            mcqItem.innerHTML = `<strong>${mcq.question}</strong> 
+              <button onclick="deleteMCQ(${mcq.id})">Delete</button>`;
+            mcqListDiv.appendChild(mcqItem);
+          });
         });
-      }
+    }
 
-      if (message.type === 'result') {
-        document.getElementById('result').textContent = message.data;
-      }
+    mcqForm.onsubmit = function(e) {
+      e.preventDefault();
+      const newMCQ = {
+        question: document.getElementById('question').value,
+        options: [
+          document.getElementById('option1').value,
+          document.getElementById('option2').value,
+          document.getElementById('option3').value,
+          document.getElementById('option4').value
+        ],
+        correctOption: parseInt(document.getElementById('correctOption').value)
+      };
 
-      if (message.type === 'scores') {
-        const scores = message.data;
-        const scoresDiv = document.getElementById('scores');
-        scoresDiv.innerHTML = '<h3>Scores:</h3>';
-        scores.forEach(score => {
-          const scoreElement = document.createElement('div');
-          scoreElement.textContent = `${score.user}: ${score.score}`;
-          scoresDiv.appendChild(scoreElement);
-        });
-      }
+      fetch('/api/mcqs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMCQ)
+      })
+      .then(() => loadMCQs());
     };
 
-    socket.onclose = () => {
-      document.getElementById('result').textContent = 'Disconnected from the WebSocket server';
+    function deleteMCQ(id) {
+      fetch(`/api/mcqs/${id}`, { method: 'DELETE' })
+        .then(() => loadMCQs());
+    }
+
+    joinGameButton.onclick = function() {
+      homeDiv.style.display = 'none';
+      gameDiv.style.display = 'block';
+      wsClient = new WebSocket('ws://localhost:8080');
+      
+      wsClient.onopen = () => {
+        console.log('Connected to WebSocket');
+      };
+
+      wsClient.onmessage = (message) => {
+        const parsedMessage = JSON.parse(message.data);
+        if (parsedMessage.type === 'mcq') {
+          mcqDisplay.innerHTML = `<strong>${parsedMessage.data.question}</strong>`;
+          parsedMessage.data.options.forEach((option, index) => {
+            mcqDisplay.innerHTML += `<div>${index}: ${option}</div>`;
+          });
+          answerForm.style.display = 'block';
+          resultDiv.innerHTML = ''; // Clear previous result
+        } else if (parsedMessage.type === 'result') {
+          resultDiv.innerHTML = `<strong>${parsedMessage.data}</strong>`;
+          answerForm.style.display = 'none'; // Hide the form until the next question is loaded
+        }
+      };
     };
 
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    answerForm.onsubmit = function(e) {
+      e.preventDefault();
+      const answer = parseInt(document.getElementById('answer').value);
+      wsClient.send(JSON.stringify({
+        type: 'answer',
+        answer: answer,
+        mcqId: JSON.parse(mcqDisplay.querySelector('strong').innerText).id // Assuming question ID is in the question text
+      }));
     };
+
+    loadMCQs();
   </script>
 </body>
 </html>
