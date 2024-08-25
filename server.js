@@ -3,69 +3,94 @@ const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 
-let mcqs = [
+const PORT = 8080; // Update to match your port number
+
+const mcqs = [
   {
-    id: 1,
     question: "What is the capital of France?",
     options: ["Paris", "Berlin", "Rome", "Madrid"],
     correctOption: 0
   },
   {
-    id: 2,
     question: "Which planet is known as the Red Planet?",
     options: ["Earth", "Mars", "Jupiter", "Saturn"],
     correctOption: 1
-  },
+  }
 ];
 
-let nextMcqId = 3;
+let currentQuestionIndex = 0;
 
 const server = http.createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    fs.createReadStream('./public/index.html').pipe(res);
-  } else if (req.method === 'GET' && req.url === '/api/mcqs') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(mcqs));
-  } else if (req.method === 'POST' && req.url === '/api/mcqs') {
-    let body = '';
-    req.on('data', chunk => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
-      const newMcq = JSON.parse(body);
-      newMcq.id = nextMcqId++;
-      mcqs.push(newMcq);
-      res.writeHead(201, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(newMcq));
-    });
-  } else if (req.method === 'DELETE' && req.url.startsWith('/api/mcqs/')) {
-    const id = parseInt(req.url.split('/').pop());
-    mcqs = mcqs.filter(mcq => mcq.id !== id);
-    res.writeHead(204);
-    res.end();
-  } else {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
-  }
+  const filePath = (req.url === '/') ? '/public/index.html' : req.url;
+  const extname = path.extname(filePath);
+  let contentType = 'text/html';
+
+  if (extname === '.js') contentType = 'text/javascript';
+  else if (extname === '.css') contentType = 'text/css';
+  else if (extname === '.ico') contentType = 'image/x-icon';
+
+  const fullPath = path.join(__dirname, filePath);
+  
+  fs.stat(fullPath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/html' });
+      res.end('<h1>404 Not Found</h1>');
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': contentType });
+    fs.createReadStream(fullPath).pipe(res);
+  });
 });
 
 const wsServer = new WebSocket.Server({ server });
+
 let userID = 0;
 const clients = new Map();
+const answeredClients = new Set(); // Track clients who have answered
+
+function broadcastMCQ() {
+  const currentMCQ = mcqs[currentQuestionIndex];
+  const mcqData = {
+    question: currentMCQ.question,
+    options: currentMCQ.options
+  };
+
+  wsServer.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({ type: 'mcq', data: mcqData }));
+    }
+  });
+}
+
+function broadcastScores() {
+  const scores = Array.from(clients.values()).map(client => ({
+    user: client.userName,
+    score: client.score
+  }));
+
+  wsServer.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({ type: 'scores', data: scores }));
+    }
+  });
+}
 
 wsServer.on('connection', (socket) => {
   userID++;
   const currentUser = `User${userID}`;
-  clients.set(socket, { userName: currentUser, score: 0, answered: false });
-  socket.send(JSON.stringify({ type: 'init', data: { user: currentUser, mcq: mcqs[0] } }));
+  clients.set(socket, { userName: currentUser, score: 0 });
+  socket.send(JSON.stringify({ type: 'user', data: `You are connected as ${currentUser}` }));
   console.log(`${currentUser} has connected to the server`);
+
+  // Broadcast the current MCQ to the new client
+  broadcastMCQ();
 
   socket.on('message', (data) => {
     const parsedData = JSON.parse(data);
     if (parsedData.type === 'answer') {
       const client = clients.get(socket);
-      const currentMCQ = mcqs.find(mcq => mcq.id === parsedData.mcqId);
+      const currentMCQ = mcqs[currentQuestionIndex];
 
       if (parsedData.answer === currentMCQ.correctOption) {
         client.score += 1;
@@ -74,29 +99,30 @@ wsServer.on('connection', (socket) => {
         socket.send(JSON.stringify({ type: 'result', data: 'Incorrect!' }));
       }
 
-      client.answered = true;
+      // Track that this client has answered
+      answeredClients.add(socket);
 
-      if ([...clients.values()].every(c => c.answered)) {
-        clients.forEach(c => c.answered = false);
-        broadcastMCQ();
+      // Check if all clients have answered
+      if (answeredClients.size === clients.size) {
+        // All clients have answered, move to the next question
+        if (currentQuestionIndex < mcqs.length - 1) {
+          currentQuestionIndex++;
+          answeredClients.clear(); // Clear the set for the next question
+          broadcastMCQ();
+        } else {
+          broadcastScores(); // Broadcast final scores after the last question
+        }
       }
     }
   });
 
   socket.on('close', () => {
+    console.log(`${clients.get(socket).userName} has disconnected`);
     clients.delete(socket);
+    answeredClients.delete(socket); // Remove client from the answered set
   });
 });
 
-function broadcastMCQ() {
-  const nextMCQ = mcqs.find(mcq => ![...clients.values()].some(c => c.answered && c.mcqId === mcq.id));
-  wsServer.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type: 'mcq', data: nextMCQ }));
-    }
-  });
-}
-
-server.listen(8080, () => {
-  console.log('Server is listening on http://localhost:8080');
+server.listen(PORT, () => {
+  console.log(`Listening on: http://localhost:${server.address().port}`);
 });
