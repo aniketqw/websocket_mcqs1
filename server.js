@@ -2,23 +2,42 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 
 const PORT = 8080; // Update to match your port number
+const uri = "mongodb+srv://aniket:<db_password>@mcqs.g8pgr.mongodb.net/?retryWrites=true&w=majority&appName=mcqs";
 
-const mcqs = [
-  {
-    question: "What is the capital of France?",
-    options: ["Paris", "Berlin", "Rome", "Madrid"],
-    correctOption: 0
-  },
-  {
-    question: "Which planet is known as the Red Planet?",
-    options: ["Earth", "Mars", "Jupiter", "Saturn"],
-    correctOption: 1
-  }
-];
-
+let mcqs = [];
 let currentQuestionIndex = 0;
+let isAdminAssigned = false;
+let adminSocket = null; // Track the admin socket
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+
+async function run() {
+  try {
+    // Connect the client to the server
+    await client.connect();
+
+    // Fetch the MCQs from the database
+    const db = client.db("mcqBattle");
+    const mcqsCollection = db.collection("mcqs");
+    mcqs = await mcqsCollection.find().toArray();
+    console.log('Loaded MCQs from MongoDB:', mcqs);
+  } catch (error) {
+    console.error("Failed to connect to MongoDB", error);
+  }
+}
+
+// Start the MongoDB connection
+run().catch(console.dir);
 
 const server = http.createServer((req, res) => {
   const filePath = (req.url === '/') ? '/public/index.html' : req.url;
@@ -41,6 +60,24 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': contentType });
     fs.createReadStream(fullPath).pipe(res);
   });
+
+  if (req.method === 'POST' && req.url === '/add-mcq') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      const newMCQ = JSON.parse(body);
+      const db = client.db("mcqBattle");
+      const mcqsCollection = db.collection("mcqs");
+
+      await mcqsCollection.insertOne(newMCQ);
+      mcqs.push(newMCQ); // Add the new MCQ to the in-memory list
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'success' }));
+    });
+  }
 });
 
 const wsServer = new WebSocket.Server({ server });
@@ -50,6 +87,11 @@ const clients = new Map();
 const answeredClients = new Set(); // Track clients who have answered
 
 function broadcastMCQ() {
+  if (mcqs.length === 0) {
+    console.error('No MCQs found in the database.');
+    return;
+  }
+
   const currentMCQ = mcqs[currentQuestionIndex];
   const mcqData = {
     question: currentMCQ.question,
@@ -79,12 +121,21 @@ function broadcastScores() {
 wsServer.on('connection', (socket) => {
   userID++;
   const currentUser = `User${userID}`;
+  const isAdmin = !isAdminAssigned;
+
+  if (isAdmin) {
+    isAdminAssigned = true;
+    adminSocket = socket;
+    socket.send(JSON.stringify({ type: 'admin', data: `You are the admin as ${currentUser}` }));
+  } else {
+    socket.send(JSON.stringify({ type: 'user', data: `You are connected as ${currentUser}` }));
+  }
+
   clients.set(socket, { userName: currentUser, score: 0 });
-  socket.send(JSON.stringify({ type: 'user', data: `You are connected as ${currentUser}` }));
-  console.log(`${currentUser} has connected to the server`);
+  console.log(`${currentUser} has connected to the server as ${isAdmin ? 'Admin' : 'User'}`);
 
   // Broadcast the current MCQ to the new client
-  broadcastMCQ();
+  if (!isAdmin) broadcastMCQ();
 
   socket.on('message', (data) => {
     const parsedData = JSON.parse(data);
@@ -120,6 +171,11 @@ wsServer.on('connection', (socket) => {
     console.log(`${clients.get(socket).userName} has disconnected`);
     clients.delete(socket);
     answeredClients.delete(socket); // Remove client from the answered set
+
+    if (socket === adminSocket) {
+      isAdminAssigned = false; // Allow the next user to become the admin
+      adminSocket = null;
+    }
   });
 });
 
