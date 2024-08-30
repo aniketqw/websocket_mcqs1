@@ -4,8 +4,9 @@ const path = require('path');
 const WebSocket = require('ws');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
-const PORT = 8080;
-const uri = "mongodb+srv://aniket:zLmKWAROrHgZnxhe@mcqs.g8pgr.mongodb.net/?retryWrites=true&w=majority&appName=mcqs";
+const PORT = 8080; // Update to match your port number
+const uri =
+  "mongodb+srv://aniket:<db_password>@mcqs.g8pgr.mongodb.net/?retryWrites=true&w=majority&appName=mcqs";
 
 let mcqs = [];
 let currentQuestionIndex = 0;
@@ -37,62 +38,45 @@ async function run() {
 run().catch(console.dir);
 
 const server = http.createServer((req, res) => {
-  if (req.method === 'GET') {
-    const filePath = (req.url === '/') ? '/public/index.html' : req.url;
-    const extname = path.extname(filePath);
-    let contentType = 'text/html';
+  const filePath = req.url === "/" ? "/public/index.html" : req.url;
+  const extname = path.extname(filePath);
+  let contentType = "text/html";
 
-    if (extname === '.js') contentType = 'text/javascript';
-    else if (extname === '.css') contentType = 'text/css';
-    else if (extname === '.ico') contentType = 'image/x-icon';
+  if (extname === ".js") contentType = "text/javascript";
+  else if (extname === ".css") contentType = "text/css";
+  else if (extname === ".ico") contentType = "image/x-icon";
 
-    const fullPath = path.join(__dirname, filePath);
+  const fullPath = path.join(__dirname, filePath);
 
-    fs.stat(fullPath, (err, stats) => {
-      if (err || !stats.isFile()) {
-        res.writeHead(404, { 'Content-Type': 'text/html' });
-        res.end('<h1>404 Not Found</h1>');
-        return;
-      }
+  fs.stat(fullPath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      res.writeHead(404, { "Content-Type": "text/html" });
+      res.end("<h1>404 Not Found</h1>");
+      return;
+    }
 
-      res.writeHead(200, { 'Content-Type': contentType });
-      fs.createReadStream(fullPath).pipe(res);
-    });
-  } else if (req.method === 'POST' && req.url === '/add-mcq') {
-    let body = '';
+    res.writeHead(200, { "Content-Type": contentType });
+    fs.createReadStream(fullPath).pipe(res);
+  });
 
-    req.on('data', chunk => {
+  if (req.method === "POST" && req.url === "/add-mcq") {
+    let body = "";
+    req.on("data", (chunk) => {
       body += chunk.toString();
     });
+    req.on("end", async () => {
+      const newMCQ = JSON.parse(body);
+      const db = client.db("mcqBattle");
+      const mcqsCollection = db.collection("mcqs");
 
-    req.on('end', async () => {
-      if (!mcqsCollection) {
-        console.error('Database connection is not established.');
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', message: 'Database not connected' }));
-        return;
-      }
+      await mcqsCollection.insertOne(newMCQ);
+      mcqs.push(newMCQ); // Add the new MCQ to the in-memory list
 
-      try {
-        const newMCQ = JSON.parse(body);
-        console.log('Received new MCQ:', newMCQ);
+      // Broadcast the updated MCQ list to all users
+      broadcastMCQ();
 
-        const result = await mcqsCollection.insertOne(newMCQ);
-        console.log('MCQ inserted into MongoDB:', result);
-
-        mcqs.push(newMCQ);
-        console.log('MCQ added to in-memory array:', mcqs);
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'success' }));
-
-        // Broadcast the new MCQ to all clients
-        broadcastMCQ();
-      } catch (error) {
-        console.error("Error adding MCQ:", error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', message: 'Failed to add MCQ' }));
-      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "success" }));
     });
   }
 });
@@ -130,8 +114,7 @@ function broadcastScores() {
 
   wsServer.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      console.log(client.userID);
-      client.send(JSON.stringify({ type: 'scores', data: scores }));
+      client.send(JSON.stringify({ type: "scores", data: scores }));
     }
   });
 }
