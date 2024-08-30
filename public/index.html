@@ -1,194 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MCQ Game</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        margin: 20px;
-      }
-      #question {
-        font-size: 1.5em;
-        margin-bottom: 10px;
-      }
-      .option {
-        display: block;
-        margin: 10px;
-        cursor: pointer;
-      }
-      #result,
-      #scores {
-        margin-top: 20px;
-        font-weight: bold;
-      }
-      #admin-panel {
-        margin-top: 30px;
-        display: none;
-      }
-      #admin-message {
-        color: red;
-        font-weight: bold;
-      }
-      input[type="text"],
-      input[type="number"] {
-        width: 60%;
-        padding: 8px;
-        margin: 5px 0;
-        box-sizing: border-box;
-      }
-      button {
-        padding: 10px 20px;
-        margin-top: 10px;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>MCQ Game</h1>
-    <div id="user-info"></div>
-    <div id="question"></div>
-    <div id="options"></div>
-    <div id="result"></div>
-    <div id="scores"></div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCQ Game</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+    #question { font-size: 1.5em; margin-bottom: 10px; }
+    .option { display: block; margin: 10px; cursor: pointer; }
+    #result, #scores { margin-top: 20px; font-weight: bold; }
+    #admin-panel { margin-top: 30px; display: none; }
+    #admin-message { color: red; font-weight: bold; }
+    input[type="text"], input[type="number"] {
+      width: 60%; padding: 8px; margin: 5px 0; box-sizing: border-box;
+    }
+    button { padding: 10px 20px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>MCQ Game</h1>
+  <div id="user-info"></div>
+  <div id="question"></div>
+  <div id="options"></div>
+  <div id="result"></div>
+  <div id="scores"></div>
 
-    <div id="admin-panel">
-      <h2>Admin Panel</h2>
-      <p id="admin-message"></p>
-      <form id="mcq-form">
-        <input
-          type="text"
-          name="question"
-          placeholder="Enter question"
-          required
-        /><br />
-        <input
-          type="text"
-          name="option1"
-          placeholder="Enter option 1"
-          required
-        /><br />
-        <input
-          type="text"
-          name="option2"
-          placeholder="Enter option 2"
-          required
-        /><br />
-        <input
-          type="text"
-          name="option3"
-          placeholder="Enter option 3"
-          required
-        /><br />
-        <input
-          type="text"
-          name="option4"
-          placeholder="Enter option 4"
-          required
-        /><br />
-        <input
-          type="number"
-          name="correctOption"
-          placeholder="Enter correct option number (1-4)"
-          required
-        /><br />
-        <button type="submit">Add MCQ</button>
-      </form>
-    </div>
+  <div id="admin-panel">
+    <h2>Admin Panel</h2>
+    <p id="admin-message"></p>
+    <form id="mcq-form">
+      <input type="text" name="question" placeholder="Enter question" required><br>
+      <input type="text" name="option1" placeholder="Enter option 1" required><br>
+      <input type="text" name="option2" placeholder="Enter option 2" required><br>
+      <input type="text" name="option3" placeholder="Enter option 3" required><br>
+      <input type="text" name="option4" placeholder="Enter option 4" required><br>
+      <input type="number" name="correctOption" placeholder="Enter correct option number (1-4)" required><br>
+      <button type="submit">Add MCQ</button>
+    </form>
+  </div>
 
-    <script>
-      const PORT = 8080; // Replace with your port if different
-      const socket = new WebSocket(`ws://localhost:${PORT}`);
-      let userName;
+  <script>
+    const PORT = 8080; // Replace with your port if different
+    const socket = new WebSocket(`ws://localhost:${PORT}`);
+    let userName;
 
-      socket.onopen = () => {
-        console.log("Connected to the WebSocket server");
-      };
+    socket.onopen = () => {
+      console.log("Connected to the WebSocket server");
+    };
 
-      socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
 
-        if (message.type === "admin") {
-          userName = message.data; // Set userName to the dynamic name assigned
-          document.getElementById("user-info").textContent = userName;
-          document.getElementById("admin-panel").style.display = "block"; // Show the admin panel
-        } else if (message.type === "user") {
-          userName = message.data;
-          document.getElementById("user-info").textContent = userName;
+      if (message.type === 'user') {
+        userName = message.data;
+        document.getElementById('user-info').textContent = userName;
+
+        // If the user is the admin, show the admin panel
+        if (userName === 'Admin') {
+          document.getElementById('admin-panel').style.display = 'block';
         }
+      }
 
-        if (message.type === "mcq") {
-          const mcq = message.data;
-          document.getElementById("question").textContent = mcq.question;
-          const optionsDiv = document.getElementById("options");
-          optionsDiv.innerHTML = "";
-          mcq.options.forEach((option, index) => {
-            const optionButton = document.createElement("button");
-            optionButton.textContent = option;
-            optionButton.className = "option";
-            optionButton.onclick = () => {
-              socket.send(JSON.stringify({ type: "answer", answer: index }));
-            };
-            optionsDiv.appendChild(optionButton);
-          });
-        }
-
-        if (message.type === "result") {
-          document.getElementById("result").textContent = message.data;
-        }
-
-        if (message.type === "scores") {
-          const scores = message.data;
-          const scoresDiv = document.getElementById("scores");
-          scoresDiv.innerHTML = "<h3>Scores:</h3>";
-          scores.forEach((score) => {
-            const scoreElement = document.createElement("div");
-            scoreElement.textContent = `${score.user}: ${score.score}`;
-            scoresDiv.appendChild(scoreElement);
-          });
-        }
-
-        if (message.type === "admin") {
-          document.getElementById("admin-message").innerText = message.data;
-        }
-      };
-
-      socket.onclose = () => {
-        document.getElementById("result").textContent =
-          "Disconnected from the WebSocket server";
-      };
-
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-      };
-
-      document
-        .getElementById("mcq-form")
-        .addEventListener("submit", function (e) {
-          e.preventDefault();
-
-          const formData = new FormData(e.target);
-          const mcqData = Object.fromEntries(formData);
-
-          fetch("/add-mcq", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(mcqData),
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.status === "success") {
-                alert("MCQ added successfully!");
-                e.target.reset();
-              }
-            })
-            .catch((error) => {
-              console.error("Error:", error);
-            });
+      if (message.type === 'mcq') {
+        const mcq = message.data;
+        document.getElementById('question').textContent = mcq.question;
+        const optionsDiv = document.getElementById('options');
+        optionsDiv.innerHTML = '';
+        mcq.options.forEach((option, index) => {
+          const optionButton = document.createElement('button');
+          optionButton.textContent = option;
+          optionButton.className = 'option';
+          optionButton.onclick = () => {
+            socket.send(JSON.stringify({ type: 'answer', answer: index }));
+          };
+          optionsDiv.appendChild(optionButton);
         });
-    </script>
-  </body>
+      }
+
+      if (message.type === 'result') {
+        document.getElementById('result').textContent = message.data;
+      }
+
+      if (message.type === 'scores') {
+        const scores = message.data;
+        const scoresDiv = document.getElementById('scores');
+        scoresDiv.innerHTML = '<h3>Scores:</h3>';
+        scores.forEach(score => {
+          const scoreElement = document.createElement('div');
+          scoreElement.textContent = `${score.user}: ${score.score}`;
+          scoresDiv.appendChild(scoreElement);
+        });
+      }
+
+      if (message.type === 'admin') {
+        document.getElementById('admin-message').innerText = message.data;
+      }
+    };
+
+    socket.onclose = () => {
+      document.getElementById('result').textContent = 'Disconnected from the WebSocket server';
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    document.getElementById('mcq-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+      const mcqData = Object.fromEntries(formData);
+
+      fetch('/add-mcq', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(mcqData)
+      }).then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            alert('MCQ added successfully!');
+            e.target.reset();
+          }
+        }).catch(error => {
+          console.error('Error:', error);
+        });
+    });
+  </script>
+</body>
 </html>
