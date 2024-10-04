@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
 const PORT = 8080;
-const uri = "mongodb+srv://aniket:zLmKWAROrHgZnxhe@mcqs.g8pgr.mongodb.net/?retryWrites=true&w=majority&appName=mcqs";
+const uri = "";
 
 let mcqs = [];
 let currentQuestionIndex = 0;
